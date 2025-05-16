@@ -1,0 +1,356 @@
+tasks.py:
+from invoke import task
+import subprocess
+
+@task
+def dev(ctx):
+    """Run both the data collection script and the Flask app."""
+    try:
+        # Run the data collection script in the background
+        data_process = subprocess.Popen(["python", "scripts/MQ2andDHT11.py"])
+        print("Data collection started...")
+
+        # Run the Flask app
+        flask_process = subprocess.Popen(["python", "weather_app/app.py"])
+        print("Flask app started at http://0.0.0.0:3000")
+
+        # Keep both processes running
+        data_process.wait()
+        flask_process.wait()
+
+    except KeyboardInterrupt:
+        print("Shutting down...")
+        data_process.terminate()
+        flask_process.terminate()
+    finally:
+        print("Processes terminated.")
+
+
+
+app.py:
+from flask import Flask, render_template, jsonify
+import sqlite3
+
+app = Flask(__name__)
+
+def get_db_connection():
+    conn = sqlite3.connect('weather_station.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@app.route('/')
+def index():
+    conn = get_db_connection()
+    data = conn.execute('SELECT * FROM weather_station ORDER BY timestamp DESC LIMIT 1').fetchone()
+    conn.close()
+    return render_template('index.html', data=data)
+
+@app.route('/history')
+def history():
+    conn = get_db_connection()
+    data = conn.execute("""
+                        SELECT * FROM weather_station
+                        WHERE strftime('%M', timestamp) % 5 = 0
+                        ORDER BY timestamp DESC
+                        LIMIT 50
+                    """).fetchall()
+    conn.close()
+    return render_template('history.html', data=data)
+
+@app.route('/api/latest')
+def api_latest():
+    conn = get_db_connection()
+    data = conn.execute('SELECT * FROM weather_station ORDER BY timestamp DESC LIMIT 1').fetchone()
+    conn.close()
+    
+    # Convert the SQLite Row to a dictionary
+    if data:
+        data_dict = {
+            'temperature': data['temperature'],
+            'humidity': data['humidity'],
+            'mq2_raw_value': data['mq2_raw_value'],
+            'voltage': data['voltage'],
+            'air_quality': data['air_quality'],
+            'timestamp': data['timestamp']
+        }
+        return jsonify(data_dict)
+    else:
+        return jsonify({'error': 'No data available'})
+
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=3000)
+
+
+MQ2andDHT11
+import serial
+import time
+import sqlite3
+from datetime import datetime
+
+# Configuration
+port = '/dev/ttyUSB0'
+baud_rate = 9600  # Match the baud rate with Arduino
+
+def get_db_connection():
+    conn = sqlite3.connect('weather_station.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def insert_data(temperature, humidity, mq2_raw_value, voltage, air_quality):
+    try:
+        conn = get_db_connection()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        conn.execute("INSERT INTO weather_station (temperature, humidity, mq2_raw_value, voltage, air_quality, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                     (temperature, humidity, mq2_raw_value, voltage, air_quality, timestamp))
+        conn.commit()
+        conn.close()
+        print("Data inserted successfully into the database.")
+    except Exception as e:
+        print(f"Error inserting data into database: {e}")
+
+try:
+    # Establish serial connection to Arduino
+    ser = serial.Serial(port, baud_rate, timeout=1)
+    time.sleep(2)  # Stabilize connection
+    print("Connected to Arduino on", port)
+
+    while True:
+        data = ser.readline().decode().strip()
+
+        if data:
+            print(f"Received Data: {data}")
+            parts = data.split(", ")
+            try:
+                temperature = float(parts[0].split(": ")[1].replace("°C", ""))
+                humidity = float(parts[1].split(": ")[1].replace("%", ""))
+                mq2_raw_value = int(parts[2].split(": ")[1])
+                voltage = float(parts[3].split(": ")[1])
+                air_quality = parts[4].split(": ")[1].strip()
+
+                print(f"Temperature: {temperature}°C, Humidity: {humidity}%, MQ2 Raw Value: {mq2_raw_value}, Voltage: {voltage:.2f}V, Air Quality: {air_quality}")
+
+                insert_data(temperature, humidity, mq2_raw_value, voltage, air_quality)
+            except (IndexError, ValueError) as e:
+                print(f"Error parsing data: {e}. Data parts: {parts}")
+
+        time.sleep(2)
+
+except serial.SerialException as e:
+    print(f"Error: Could not open serial port. {e}")
+except KeyboardInterrupt:
+    print("Program terminated.")
+finally:
+    if 'ser' in locals() and ser.is_open:
+        ser.close()
+        print("Serial connection closed.")
+
+
+index.html:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Station Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #4facfe, #00f2fe);
+            text-align: center;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            padding: 20px;
+        }
+
+        .data-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .data-card {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            margin: 10px;
+            border-radius: 10px;
+            width: 180px;
+            transition: transform 0.3s ease-in-out, background 0.3s ease-in-out;
+        }
+
+        .data-card:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        p {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .timestamp {
+            font-size: 1.2em;
+            margin-top: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .data-card {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Station Dashboard</h1>
+        <div class="data-container">
+            <div class="data-card">
+                <h2>Temperature</h2>
+                <p id="temperature">-- °C</p>
+            </div>
+            <div class="data-card">
+                <h2>Humidity</h2>
+                <p id="humidity">-- %</p>
+            </div>
+            <div class="data-card">
+                <h2>MQ2 Sensor</h2>
+                <p id="mq2_raw_value">--</p>
+            </div>
+            <div class="data-card">
+                <h2>Voltage</h2>
+                <p id="voltage">-- V</p>
+            </div>
+            <div class="data-card">
+                <h2>Air Quality</h2>
+                <p id="air_quality">--</p>
+            </div>
+        </div>
+        <p class="timestamp">Last Updated: <span id="timestamp">--</span></p>
+    </div>
+
+    <script>
+        function fetchLatestData() {
+            fetch('/api/latest')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('temperature').textContent = `${data.temperature} °C`;
+                    document.getElementById('humidity').textContent = `${data.humidity} %`;
+                    document.getElementById('mq2_raw_value').textContent = data.mq2_raw_value;
+                    document.getElementById('voltage').textContent = `${data.voltage} V`;
+                    document.getElementById('air_quality').textContent = data.air_quality;
+                    document.getElementById('timestamp').textContent = data.timestamp;
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // Refresh data every 5 seconds
+        setInterval(fetchLatestData, 5000);
+
+        // Initial fetch
+        fetchLatestData();
+    </script>
+</body>
+</html>
+
+
+history.html:
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #ff9966, #ff5e62);
+            text-align: center;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            padding: 20px;
+        }
+
+        table {
+            width: 80%;
+            margin: 0 auto;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transition: background 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        table {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Station History</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>MQ2 Value</th>
+                    <th>Voltage</th>
+                    <th>Air Quality</th>
+                </tr>
+            </thead>
+            <tbody id="history-data">
+                <tr><td colspan="6">Loading data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function fetchHistoryData() {
+            fetch('/history')
+                .then(response => response.text()) // Fetch the HTML response from Flask
+                .then(html => {
+                    document.getElementById('history-data').innerHTML = html;
+                })
+                .catch(error => console.error('Error fetching history:', error));
+        }
+
+        // Refresh history every 10 seconds
+        setInterval(fetchHistoryData, 10000);
+
+        // Initial fetch
+        fetchHistoryData();
+    </script>
+</body>
+</html>
+
