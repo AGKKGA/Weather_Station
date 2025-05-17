@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #ff9966, #ff5e62);
+            text-align: center;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            padding: 20px;
+        }
+
+        table {
+            width: 80%;
+            margin: 0 auto;
+            border-collapse: collapse;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transition: background 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        table {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Station History</h1>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Temperature</th>
+                    <th>Humidity</th>
+                    <th>MQ2 Value</th>
+                    <th>Voltage</th>
+                    <th>Air Quality</th>
+                </tr>
+            </thead>
+            <tbody id="history-data">
+                <tr><td colspan="6">Loading data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function fetchHistoryData() {
+            fetch('/history')
+                .then(response => response.text()) // Fetch the HTML response from Flask
+                .then(html => {
+                    document.getElementById('history-data').innerHTML = html;
+                })
+                .catch(error => console.error('Error fetching history:', error));
+        }
+
+        // Refresh history every 10 seconds
+        setInterval(fetchHistoryData, 10000);
+
+        // Initial fetch
+        fetchHistoryData();
+    </script>
+</body>
+</html>
+
