@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Station Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #4facfe, #00f2fe);
+            text-align: center;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            padding: 20px;
+        }
+
+        .data-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .data-card {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            margin: 10px;
+            border-radius: 10px;
+            width: 180px;
+            transition: transform 0.3s ease-in-out, background 0.3s ease-in-out;
+        }
+
+        .data-card:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        p {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .timestamp {
+            font-size: 1.2em;
+            margin-top: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .data-card {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Station Dashboard</h1>
+        <div class="data-container">
+            <div class="data-card">
+                <h2>Temperature</h2>
+                <p id="temperature">-- °C</p>
+            </div>
+            <div class="data-card">
+                <h2>Humidity</h2>
+                <p id="humidity">-- %</p>
+            </div>
+            <div class="data-card">
+                <h2>MQ2 Sensor</h2>
+                <p id="mq2_raw_value">--</p>
+            </div>
+            <div class="data-card">
+                <h2>Voltage</h2>
+                <p id="voltage">-- V</p>
+            </div>
+            <div class="data-card">
+                <h2>Air Quality</h2>
+                <p id="air_quality">--</p>
+            </div>
+        </div>
+        <p class="timestamp">Last Updated: <span id="timestamp">--</span></p>
+    </div>
+
+    <script>
+        function fetchLatestData() {
+            fetch('/api/latest')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('temperature').textContent = `${data.temperature} °C`;
+                    document.getElementById('humidity').textContent = `${data.humidity} %`;
+                    document.getElementById('mq2_raw_value').textContent = data.mq2_raw_value;
+                    document.getElementById('voltage').textContent = `${data.voltage} V`;
+                    document.getElementById('air_quality').textContent = data.air_quality;
+                    document.getElementById('timestamp').textContent = data.timestamp;
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // Refresh data every 5 seconds
+        setInterval(fetchLatestData, 5000);
+
+        // Initial fetch
+        fetchLatestData();
+    </script>
+</body>
+</html>
